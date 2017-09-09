@@ -24,19 +24,24 @@ class processor_t {
 #define TAG_BITS (N_ROWS - 1)
 
 struct row {
-    int tag; // PC (Instruction Address)
+    int tag; // 7 bits do PC (Instruction Address)
     int idx; // Possivelmente não precisa salvar na row. É o PC depois dos cálculos (>> 2 & TAG_BITS).
+    int opcode_size; // Tamanho da instrucao
     uint8_t lru;
-    int address;
+    uint64_t address; // PC Completo
     bool valid;
-    bool bht; // Armazena a ultima direção que o salto foi tomado.
-              // Se eu já tiver, eu posso prever chutando essa direção.
-    int64_t target_address; // Calculando: coloca o endereço da próxima instrução quando der o fetch da próxima.
+    int8_t bht; // Armazena a ultima direção que o salto foi tomado.
+                // Se eu já tiver, eu posso prever chutando essa direção.
+    uint64_t target_address; // Calculando: coloca o endereço da próxima instrução quando der o fetch da próxima.
 };
 
 typedef struct row row;
 
-void copy_row(row dst, row src);
+int idx(int base, int deslocamento);
+void copy_row(row *dst, row src);
+void insert_row(row *btb, row newRow);
+
+unsigned int Hit, Miss;
 
 // Definindo index na btb a partir do pc:
 // PC shift pra direita (ignorar 2 (log(N_WAY_SET_ASSOCIATIVE)) LSB)

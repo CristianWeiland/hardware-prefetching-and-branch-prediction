@@ -1,4 +1,6 @@
 *.tar.gz
 *.out.gz
 *.o
+*.swp
+*.swo
 orcs
