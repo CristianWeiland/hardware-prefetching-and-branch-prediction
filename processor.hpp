@@ -1,3 +1,6 @@
+#ifndef PROCESSOR_HPP
+#define PROCESSOR_HPP
+
 // ============================================================================
 // ============================================================================
 class processor_t {
@@ -41,8 +44,6 @@ int idx(int base, int deslocamento);
 void copy_row(row *dst, row src);
 void insert_row(row *btb, row newRow);
 
-unsigned int Hit, Miss;
-
 // Definindo index na btb a partir do pc:
 // PC shift pra direita (ignorar 2 (log(N_WAY_SET_ASSOCIATIVE)) LSB)
 // 512 entradas, preciso log2(512 / 4) bits = 7.
@@ -57,3 +58,4 @@ unsigned int Hit, Miss;
 // btb = lista de conjuntos;
 // conjuntos = lista de linhas;
 
+#endif

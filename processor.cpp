@@ -3,6 +3,8 @@
 //row btb[SETS / WAYS][WAYS];
 row *btb;
 
+unsigned int Hit, Miss, BtbHit, BtbMiss;
+
 inline int idx(int base, int deslocamento) {
     return base * WAYS + deslocamento;
 }
@@ -95,9 +97,10 @@ void processor_t::allocate() {
     for (i=0; i<N_ROWS*WAYS; ++i) {
         btb[i].valid = false;
     }
-    // TODO: Fill BTB with invalid values.
     Hit = 0;
     Miss = 0;
+    BtbHit = 0;
+    BtbMiss = 0;
 };
 
 // =====================================================================
@@ -162,15 +165,20 @@ void processor_t::clock() {
 
         if (branchRow && branchRow->valid) { // We have valid information about it in our BTB
             if (branchRow->bht == 0) { // Last time, branch was not taken.
+                BtbHit++;
                 predicted_pc = new_instruction.opcode_address + new_instruction.opcode_size;
                 predicted = true;
             } else if(branchRow->bht == 1) { // Last time, branch was taken.
                 if (branchRow->target_address != 0) { // Branch was taken. Do we have an address to go?
+                    BtbHit++;
                     predicted_pc = branchRow->target_address;
                     predicted = true;
+                } else {
+                    printf("This should NOT have happened...\n");
                 }
             }
         } else { // We didnt have valid information. Add a new row in our BTB.
+            BtbMiss++;
             insert_row(createRow(new_instruction.opcode_address, new_instruction.opcode_size));
         }
 
@@ -186,4 +194,6 @@ void processor_t::statistics() {
 	ORCS_PRINTF("processor_t\n");
     ORCS_PRINTF("Branch Hits: %d\n", Hit);
     ORCS_PRINTF("Branch Misses: %d\n", Miss);
+    ORCS_PRINTF("BTB Hits: %d\n", BtbHit);
+    ORCS_PRINTF("BTB Misses: %d\n", BtbMiss);
 };
