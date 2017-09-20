@@ -2,8 +2,17 @@
 
 //row btb[SETS / WAYS][WAYS];
 row *btb;
+l1_row L1;
 
 unsigned int Hit, Miss, BtbHit, BtbMiss;
+unsigned int L1_Hit, L1_Miss;
+
+/* Caches */
+inline int l1_id(int base, int deslocamento) {
+    return base * L1_WAYS + deslocamento;
+}
+
+/* BTB Start */
 
 inline int idx(int base, int deslocamento) {
     return base * WAYS + deslocamento;
@@ -42,7 +51,6 @@ row createRow(uint64_t address, int opcode_size) {
     return newRow;
 }
 
-// BTB
 void copy_row(row *dst, row src) {
     dst->tag = src.tag;
     dst->idx = src.idx;
@@ -85,6 +93,9 @@ void insert_row(row newRow) {
     }
 }
 
+/* BTB End */
+
+
 // =====================================================================
 processor_t::processor_t() {
 
@@ -92,16 +103,66 @@ processor_t::processor_t() {
 
 // =====================================================================
 void processor_t::allocate() {
+    /* Alloca BTB */
     btb = (row*) malloc(sizeof(struct row) * N_ROWS * WAYS);
     int i;
     for (i=0; i<N_ROWS*WAYS; ++i) {
         btb[i].valid = false;
     }
+    /* Alloca Cache L1 */
+    L1 = (l1_row*) malloc(sizeof(struct l1_row) * L1_LINES);
+    for (i=0; i<L1_LINES; ++i) {
+        L1[i].valid = false;
+        L1[i].dirty= false;
+    }
+    /* Inicializa variáveis globais */
     Hit = 0;
     Miss = 0;
     BtbHit = 0;
     BtbMiss = 0;
 };
+
+bool in_l1() {
+    // Descobre linha da cache (decodificando PC??)
+    // (i) Para cada linha entre as N associativas:
+    //     Se tags forem iguais:
+    //         (j) Para cada linha entre as N associativas:
+    //             linha[j].lru--;
+    //         linha[i].lru = L1_MAX_LRU;
+    //         return true;
+    //     Else
+    //         return false;
+    return true;
+}
+
+void add_row_cache(l1_row new_row) {
+    // Implementado pensando na L1, tem que pensar mais pra L2.
+    return;
+    // Eu sei que não existe na L1. Então, só adiciona direto.
+    int index = -999; // Descobre linha da cache (decodificando PC??)
+    int invalid = -1;
+    int i;
+    for (i=0; i<L1_WAYS; ++i) { Pra cada linha entre as N associativas
+        if (!l1[i+index].valid) { Se a linha não é valida
+            invalid = i;
+        }
+    }
+
+    if (invalid == -1) { // Nenhuma linha inválida. Escolhe outra com LRU.
+        int menor_lru = L1_MAX_LRU;
+        int posicao = 0;
+        for (i=0; i<L1_WAYS; ++i) {
+            if (l1[index+i].lru < menor_lru) {
+                menor_lru = l1[index+i].lru;
+                posicao = i;
+            }
+        }
+        // Achei posicao com menor LRU. Deixa em 'invalid'.
+        invalid = posicao;
+    }
+
+    l1[index+invalid] = new_row;
+}
 
 // =====================================================================
 void processor_t::clock() {
@@ -116,6 +177,18 @@ void processor_t::clock() {
         return;
 	}
 
+    // TODO: Criar l1_row.
+    // TODO: Verificar latencia / energia.
+    // TODO: Transformar CISC em microOps.
+    // Cache:
+    if (in_l1(new_instruction)) {
+        ++L1_Hit;
+    } else {
+        ++L1_Miss;
+        // add_row_cache();
+    }
+
+    // BTB:
     // Checa se a instrucao anterior era um branch. Se sim, atualiza o target_address dela na BTB.
     if (wasBranch) {
         int i, index = 0, base = getBase(previous_pc);

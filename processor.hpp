@@ -58,4 +58,76 @@ void insert_row(row *btb, row newRow);
 // btb = lista de conjuntos;
 // conjuntos = lista de linhas;
 
+// ============================================================================
+/// Cache Defines
+// ============================================================================
+
+
+/*
+Endereçamento na Cache:
+
++-------------+-----------------+-----------------+
+| Tag (resto) | Index (8, 6-13) | Offset (6, 0-5) |
++-------------+-----------------+-----------------+
+
+Linha de Cache (não inclui dados):
+
++-----+-------+-------+-----+
+| Tag | Valid | Dirty | LRU |
++-----+-------+-------+-----+
+
++-----------------+----------------+----------------+
+|                 |       L1       |       L2       | 
++-----------------+----------------+----------------+
+| Tamanho         |           64KB |            1MB |
+| Bloco           |            64B |            64B |
+| Associatividade |         4 ways |         8 ways |
+| Endereçamento   |           Byte |                |
+| Latência        |                |                |
+| Energia         |                |                |
+| Acesso          |     Sequencial |     Sequencial |
+| Substituição    |   LRU Perfeito |   LRU Perfeito |
+| Escrita         |     Write-Back |     Write-Back |
+| Escrita Pt 2    | Write-Allocate | Write-Allocate |
+| Inclusividade   |  Não Inclusiva |  Não Inclusiva |
++-----------------+----------------+----------------+
+
+RAM: 4GB;
+*/
+
+#define ADDRESSING 1 // Endereçamento (bytes)
+#define L1_WAYS 4 // Associatividade
+#define L1_SETS 256 // Numero de conjuntos associativos da cache
+#define L1_LINES 1024 // Numero de linhas da cache
+#define L1_BLOCK 64 // Tamanho do bloco (bytes)
+#define L1_SIZE 64*1024 // Tamanho total da Cache
+#define L1_MAX_LRU L1_WAYS - 1 // Valor maximo do LRU.
+#define L2_WAYS 8
+// #define L2_SETS ???
+#define L2_BLOCK 64
+#define L2_SIZE 1024*1024
+
+struct l1_row {
+    int tag;
+    bool valid;
+    int8_t lru;
+};
+
+typedef struct l1_row l1_row;
+
+int idx(int base, int deslocamento);
+void copy_row(row *dst, row src);
+void insert_row(row *btb, row newRow);
+
+
+/*
+Informações úteis da instrução
+isRead
+isRead2
+isWrite
+
+Essas 3 servem pra ajudar em instruções CISC tipo mem[x] = mem[y] + mem[z] (LD y, LD z, ADD, SW x);
+
+*/
+
 #endif
