@@ -18,6 +18,21 @@ class processor_t {
 	    void statistics();
 };
 
+#define HIT 1
+#define MISS 0
+#define TAKEN 1
+#define NOT_TAKEN 0
+
+// Clock penalties: they comes in 4 flavors:
+// 1- P1 was right and P2 did not correct (best case);
+#define PENALTY_P1_R_P2_R 0;
+// 2- P1 was wrong and P2 corrected it (second best case);
+#define PENALTY_P1_W_P2_R 5; // Number of cycles from fetch to finish calculating P2
+// 3- P1 was wrong and P2 did not correct it (second worst case);
+#define PENALTY_P1_W_P2_W 8; // This is a fixed number by our Professor.
+// 4- P2 was right and P2 corrected it to wrong (worst case);
+#define PENALTY_P1_R_P2_W 13;
+
 // ============================================================================
 /// BTB Defines
 // ============================================================================
@@ -57,5 +72,19 @@ void insert_row(row *btb, row newRow);
 
 // btb = lista de conjuntos;
 // conjuntos = lista de linhas;
+
+
+/* FIM BTB */
+/* COMEÇO ARF (Affector Register File) */
+#define ARF_ROWS 32 // Number of architectural registers;
+
+// Cada entrada da ARF eh uma sequencia de bits, portanto, um numero.
+// Dependendo de quantas entradas eu quiser vou escolher qual tipo usar.
+// 32 entradas = posso armazenar informacao sobre 32 branches = int
+// 64 entradas = long.
+// Por enquanto vou usar long.
+
+
+
 
 #endif
