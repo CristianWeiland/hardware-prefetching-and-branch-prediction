@@ -3,9 +3,11 @@
 //row btb[SETS / WAYS][WAYS];
 row *btb;
 l1_row L1;
+// Como não temos dados, dá pra usar a mesma linha da l1.
+l1_row L2;
 
 unsigned int Hit, Miss, BtbHit, BtbMiss;
-unsigned int L1_Hit, L1_Miss;
+unsigned int L1_Hit, L1_Miss, L2_Hit, L2_Miss, Mem_Cycles;
 
 /* Caches */
 inline int l1_id(int base, int deslocamento) {
@@ -13,7 +15,6 @@ inline int l1_id(int base, int deslocamento) {
 }
 
 /* BTB Start */
-
 inline int idx(int base, int deslocamento) {
     return base * WAYS + deslocamento;
 }
@@ -115,14 +116,29 @@ void processor_t::allocate() {
         L1[i].valid = false;
         L1[i].dirty= false;
     }
+    /* Alloca Cache L2 */
+    L2 = (l1_row*) malloc(sizeof(struct l1_row) * L2_LINES);
+    for (i=0; i<L2_LINES; ++i) {
+        L2[i].valid = false;
+        L2[i].dirty= false;
+    }
     /* Inicializa variáveis globais */
     Hit = 0;
     Miss = 0;
     BtbHit = 0;
     BtbMiss = 0;
+    L1_Hit = 0;
+    L2_Hit = 0;
+    L1_Miss = 0;
+    L2_Miss = 0;
+    Mem_Cycles = 0;
 };
 
-bool in_l1() {
+bool is_memory_instruction(opcod_package_t instr) {
+    return instr.is_read || instr.is_read2 || instr.is_write;
+}
+
+bool in_l1(int address) {
     // Descobre linha da cache (decodificando PC??)
     // (i) Para cada linha entre as N associativas:
     //     Se tags forem iguais:
@@ -135,15 +151,29 @@ bool in_l1() {
     return true;
 }
 
-void add_row_cache(l1_row new_row) {
-    // Implementado pensando na L1, tem que pensar mais pra L2.
-    return;
+bool in_l2(int address) {
+    // Descobre linha da cache (decodificando PC??)
+    // (i) Para cada linha entre as N associativas:
+    //     Se tags forem iguais:
+    //         (j) Para cada linha entre as N associativas:
+    //             linha[j].lru--;
+    //         linha[i].lru = L1_MAX_LRU;
+    //         return true;
+    //     Else
+    //         return false;
+    return true;
+}
+
+// Tag-index é obtido por PC >> 6. Guardar isso é suficiente. Eu poderia ignorar também o index, mas como é um simulador, então né
+void add_row_cache_l1(int pc) {
     // Eu sei que não existe na L1. Então, só adiciona direto.
-    int index = -999; // Descobre linha da cache (decodificando PC??)
+    int index = (pc >> OFFSET_L1_BITS) & PC_MASK; // Descobre linha da cache (decodificando PC??)
+    int tag = (pc >> OFFSET_L1_BITS);
     int invalid = -1;
     int i;
+
     for (i=0; i<L1_WAYS; ++i) { Pra cada linha entre as N associativas
-        if (!l1[i+index].valid) { Se a linha não é valida
+        if (!L1[i+index].valid) { Se a linha não é valida
             invalid = i;
         }
     }
@@ -152,8 +182,8 @@ void add_row_cache(l1_row new_row) {
         int menor_lru = L1_MAX_LRU;
         int posicao = 0;
         for (i=0; i<L1_WAYS; ++i) {
-            if (l1[index+i].lru < menor_lru) {
-                menor_lru = l1[index+i].lru;
+            if (L1[index+i].lru < menor_lru) {
+                menor_lru = L1[index+i].lru;
                 posicao = i;
             }
         }
@@ -161,7 +191,76 @@ void add_row_cache(l1_row new_row) {
         invalid = posicao;
     }
 
-    l1[index+invalid] = new_row;
+    /* Ate aqui eu descobri qual linha eu vou substituir. */
+    l1_row new_row;
+    new_row.dirty = false;
+    new_row.valid = true;
+    new_row.lru = L1_MAX_LRU;
+    new_row.tag = tag;
+
+    L1[index+invalid] = new_row;
+}
+
+void add_row_cache_l2(int pc) {
+    // Eu sei que não existe na L1. Então, só adiciona direto.
+    int index = (pc >> OFFSET_L2_BITS) & PC_MASK; // Descobre linha da cache (decodificando PC??)
+    int tag = (pc >> OFFSET_L2_BITS);
+    int invalid = -1;
+    int i;
+
+    for (i=0; i<L2_WAYS; ++i) { // Pra cada linha entre as N associativas
+        if (!L1[i+index].valid) { // Se a linha não é valida
+            invalid = i;
+        }
+    }
+
+    if (invalid == -1) { // Nenhuma linha inválida. Escolhe outra com LRU.
+        int menor_lru = L2_MAX_LRU;
+        int posicao = 0;
+        for (i=0; i<L2_WAYS; ++i) {
+            if (L2[index+i].lru < menor_lru) {
+                menor_lru = L2[index+i].lru;
+                posicao = i;
+            }
+        }
+        // Achei posicao com menor LRU. Deixa em 'invalid'.
+        invalid = posicao;
+    }
+
+    /* Ate aqui eu descobri qual linha eu vou substituir. */
+    l2_row new_row;
+    new_row.dirty = false;
+    new_row.valid = true;
+    new_row.lru = L2_MAX_LRU;
+    new_row.tag = tag;
+
+    L2[index+invalid] = new_row;
+}
+
+void operate_caches(bool isMemOp, int address) {
+    if (!isMemOp) return;
+
+    // ciclos += L1_ACCESS_TIME;
+    Mem_Cycles += L1_ACCESS_TIME;
+    if (in_l1(address)) {
+        ++L1_Hit;
+        // Atualiza LRU
+    } else {
+        ++L1_Miss;
+        // ciclos += L2_ACCESS_TIME;
+        Mem_Cycles += L2_ACCESS_TIME;
+        if (in_l2(address)) {
+            ++L2_Hit;
+            // Atualiza LRU
+        } else {
+            ++L2_Miss;
+            // ciclos += RAM_ACCESS_TIME;
+            Mem_Cycles += RAM_ACCESS_TIME;
+            // adiciona_na_l2()
+            add_row_cache_l2(new_instruction.opcode_addess);
+        }
+        add_row_cache_l1(new_instruction.opcode_addess);
+    }
 }
 
 // =====================================================================
@@ -180,13 +279,9 @@ void processor_t::clock() {
     // TODO: Criar l1_row.
     // TODO: Verificar latencia / energia.
     // TODO: Transformar CISC em microOps.
-    // Cache:
-    if (in_l1(new_instruction)) {
-        ++L1_Hit;
-    } else {
-        ++L1_Miss;
-        // add_row_cache();
-    }
+    operate_caches(new_instruction.isRead, new_instrucion.read_address);
+    operate_caches(new_instruction.isRead2, new_instrucion.read2_address);
+    operate_caches(new_instruction.isWrite, new_instrucion.write_address);
 
     // BTB:
     // Checa se a instrucao anterior era um branch. Se sim, atualiza o target_address dela na BTB.

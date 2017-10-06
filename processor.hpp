@@ -64,11 +64,17 @@ void insert_row(row *btb, row newRow);
 
 
 /*
-Endereçamento na Cache:
+Endereçamento na Cache L1:
 
 +-------------+-----------------+-----------------+
 | Tag (resto) | Index (8, 6-13) | Offset (6, 0-5) |
 +-------------+-----------------+-----------------+
+
+Endereçamento na Cache L2:
+
++-------------+------------------+-----------------+
+| Tag (resto) | Index (10, 6-13) | Offset (6, 0-5) |
++-------------+------------------+-----------------+
 
 Linha de Cache (não inclui dados):
 
@@ -83,13 +89,14 @@ Linha de Cache (não inclui dados):
 | Bloco           |            64B |            64B |
 | Associatividade |         4 ways |         8 ways |
 | Endereçamento   |           Byte |                |
-| Latência        |                |                |
 | Energia         |                |                |
 | Acesso          |     Sequencial |     Sequencial |
 | Substituição    |   LRU Perfeito |   LRU Perfeito |
 | Escrita         |     Write-Back |     Write-Back |
 | Escrita Pt 2    | Write-Allocate | Write-Allocate |
 | Inclusividade   |  Não Inclusiva |  Não Inclusiva |
+| Ciclos Hit      |              1 |              4 |
+| Ciclos Miss     |                |            200 |
 +-----------------+----------------+----------------+
 
 RAM: 4GB;
@@ -107,9 +114,23 @@ RAM: 4GB;
 #define L2_BLOCK 64
 #define L2_SIZE 1024*1024
 
+#define L1_ACCESS_TIME 1
+#define L2_ACCESS_TIME 4
+#define RAM_ACCESS_TIME 200
+
+/* L1 tá certo, L2 não sei. */
+#define OFFSET_L1_BITS 6
+#define OFFSET_L2_BITS 6
+#define PC_L1_BITS 8
+#define PC_L2_BITS 10
+
+// 0000000000011111111000000
+#define PC_MASK 0xFF
+
 struct l1_row {
     int tag;
     bool valid;
+    bool dirty;
     int8_t lru;
 };
 
@@ -128,6 +149,10 @@ isWrite
 
 Essas 3 servem pra ajudar em instruções CISC tipo mem[x] = mem[y] + mem[z] (LD y, LD z, ADD, SW x);
 
+Toda vez que tiver que remover uma linha modificada (independente se tiver na L1 ou L2) eu suponho que
+o Write-Back vai pra Memória Principal, então latência da RAM (RAM_ACCESS_TIME = 200).
+
+Isso garante que nunca uma linha da L2 vai tar modificada!
 */
 
 #endif
