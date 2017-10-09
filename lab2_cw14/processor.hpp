@@ -31,7 +31,7 @@ class processor_t {
 // 3- P1 was wrong and P2 did not correct it (second worst case);
 #define PENALTY_P1_W_P2_W 8; // This is a fixed number by our Professor.
 // 4- P2 was right and P2 corrected it to wrong (worst case);
-#define PENALTY_P1_R_P2_W 13;
+#define PENALTY_P1_R_P2_W 8;
 
 // ============================================================================
 /// BTB Defines
@@ -40,6 +40,7 @@ class processor_t {
 #define WAYS 4 // N_WAY_SET_ASSOCIATIVE
 #define N_ROWS (SETS/WAYS)
 #define TAG_BITS (N_ROWS - 1)
+#define BTB_MAX_COUNT 3 // 2 bits
 
 struct row {
     int tag; // 7 bits do PC (Instruction Address)
@@ -76,7 +77,12 @@ void insert_row(row *btb, row newRow);
 
 /* FIM BTB */
 /* COMEÇO ARF (Affector Register File) */
-#define ARF_ROWS 32 // Number of architectural registers;
+#define ARF_ROWS 256 // Number of architectural registers;
+#define PHT_SIZE 2048
+#define PHT_IDX_SIZE 11
+#define PHT_SIZE_64 1024*64
+#define PHT_IDX_SIZE_64 16
+#define PHT_ABB_MAX 16 // Represents number of bits I am using inside PHT. 4 bits = 16.
 
 // Cada entrada da ARF eh uma sequencia de bits, portanto, um numero.
 // Dependendo de quantas entradas eu quiser vou escolher qual tipo usar.
