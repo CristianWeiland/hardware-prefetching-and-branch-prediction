@@ -111,8 +111,10 @@ RAM: 4GB;
 #define L1_MAX_LRU L1_WAYS - 1 // Valor maximo do LRU.
 #define L2_WAYS 8
 // #define L2_SETS ???
+#define L2_LINES 2048 // L2 size = 1MB = 2^20. Each block has 64 Bytes, so there are 2^14 blocks. Its 8 ways, so we have 2^11 lines.
 #define L2_BLOCK 64
 #define L2_SIZE 1024*1024
+#define L2_MAX_LRU L2_WAYS - 1
 
 #define L1_ACCESS_TIME 1
 #define L2_ACCESS_TIME 4

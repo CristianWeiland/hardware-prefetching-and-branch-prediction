@@ -319,10 +319,6 @@ void processor_t::clock() {
     }
 
     // TODO: Remover isso...
-    wasTaken = false;
-    if (wasTaken) {
-        printf("parabens...");
-    }
     if (predicted_pc_abb && predicted_pc_abb_nf && predicted_pc_2bit && predicted_pc_abb_64 && predicted_pc_abb_64_nf) {
         predicted_pc_2bit = predicted_pc_2bit;
     }
