@@ -116,12 +116,14 @@ void processor_t::allocate() {
     /* Alloca Cache L1 */
     L1 = (l1_row*) malloc(sizeof(struct l1_row) * L1_LINES);
     for (i=0; i<L1_LINES; ++i) {
+        L1[i].tag = -1;
         L1[i].valid = false;
         L1[i].dirty = false;
     }
     /* Alloca Cache L2 */
     L2 = (l1_row*) malloc(sizeof(struct l1_row) * L2_LINES);
     for (i=0; i<L2_LINES; ++i) {
+        L1[i].tag = -1;
         L2[i].valid = false;
         L2[i].dirty = false;
     }
@@ -375,4 +377,9 @@ void processor_t::statistics() {
     ORCS_PRINTF("Branch Misses: %d\n", Miss);
     ORCS_PRINTF("BTB Hits: %d\n", BtbHit);
     ORCS_PRINTF("BTB Misses: %d\n", BtbMiss);
+    ORCS_PRINTF("L1 Hits: %d\n", L1_Hit);
+    ORCS_PRINTF("L1 Misses: %d\n", L1_Miss);
+    ORCS_PRINTF("L2 Hits: %d\n", L2_Hit);
+    ORCS_PRINTF("L2 Misses: %d\n", L2_Miss);
+    ORCS_PRINTF("Mem Cycles: %d\n", Mem_Cycles);
 };
