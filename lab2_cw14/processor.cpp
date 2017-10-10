@@ -2,9 +2,9 @@
 
 //row Btb[SETS / WAYS][WAYS];
 row *Btb;
-long ARF[ARF_ROWS]; // Afector Register File
-long ABB; // Affector Branch Bitmap
-long GHR; // Global History Register
+long long ARF[ARF_ROWS]; // Afector Register File
+long long ABB; // Affector Branch Bitmap
+long long GHR; // Global History Register
 // int PHT_2bit[PHT_SIZE];
 int PHT_abb[PHT_SIZE];
 int PHT_abb_nf[PHT_SIZE];
@@ -128,26 +128,6 @@ void insert_row(row newRow) {
         --Btb[idx(base,i)].lru;
     }
 }
-/*
-int prediction1(row *branchRow, uint64_t pc) {
-    // 1 bit history
-    if (Predictor_type == ONE_BIT) {
-        if (branchRow->bht == 0) {
-            return NOT_TAKEN;
-        } else if (branchRow->bht == 1) {
-            return TAKEN;
-        }
-        return -1;
-    }
-
-    if (Predictor_type == GSHARE) {
-        // GShare faz xor do GHR com PC pra determinar entrada da PHT.
-        //return predicao_pht(PHT[])
-    }
-
-    return -1;
-}
-*/
 
 int predictionAbb(int data) {
     // Recebe como parametro uma linha de pht, retorna TAKEN ou NAO_TAKEN.
@@ -166,7 +146,7 @@ int prediction_2bit(int data) {
     }
 }
 
-int getPhtIdx(long GHR, long ABB) {
+int getPhtIdx() {
     // Long has 64 bits. If it is bigger than PHT_IDX_SIZE, its not going to work.
     // We have to take only a few bits from GHR and ABB. The way sugested in the
     // article is to do a Fold-XOR hash.
@@ -175,19 +155,39 @@ int getPhtIdx(long GHR, long ABB) {
     masked = masked & 0x7FF; // 2. Get 11 LSB on masked
 
     shifted = ((GHR & ABB) >> 11) & 0x7FF; // 3. Get bits 11-21.
-    masked = masked | shifted; // 4. XOR them.
+    masked = masked ^ shifted; // 4. XOR them.
 
     shifted = ((GHR & ABB) >> 22) & 0x7FF; // 5. Get next 11 bits
-    masked = masked | shifted; // 6. XOR them.
+    masked = masked ^ shifted; // 6. XOR them.
 
     shifted = ((GHR & ABB) >> 33) & 0x7FF; // 5. Get next 11 bits
-    masked = masked | shifted; // 8. XOR them.
+    masked = masked ^ shifted; // 8. XOR them.
 
     shifted = ((GHR & ABB) >> 44) & 0x7FF; // 5. Get next 11 bits
-    masked = masked | shifted; // 8. XOR them.
+    masked = masked ^ shifted; // 8. XOR them.
 
     shifted = ((GHR & ABB) >> 55) & 0x7FF; // 5. Get next 11 bits
-    masked = masked | shifted; // 8. XOR them.
+    masked = masked ^ shifted; // 8. XOR them.
+
+    long long tmp = (GHR & ABB);
+    tmp = tmp >> 63;
+    shifted = (tmp >> 3) & 0x7FF; // 5. Get next 11 bits
+    masked = masked ^ shifted; // 8. XOR them.
+
+    shifted = (tmp >> 14) & 0x7FF; // 5. Get next 11 bits
+    masked = masked ^ shifted; // 8. XOR them.
+
+    shifted = (tmp >> 25) & 0x7FF; // 5. Get next 11 bits
+    masked = masked ^ shifted; // 8. XOR them.
+
+    shifted = (tmp >> 36) & 0x7FF; // 5. Get next 11 bits
+    masked = masked ^ shifted; // 8. XOR them.
+
+    shifted = (tmp >> 47) & 0x7FF; // 5. Get next 11 bits
+    masked = masked ^ shifted; // 8. XOR them.
+
+    shifted = (tmp >> 58) & 0x7FF; // 5. Get next 11 bits
+    masked = masked ^ shifted; // 8. XOR them.
 
     return masked;
 /* Execution Example (with 8 bits, folding 4 times 2 bits):
@@ -205,7 +205,7 @@ int getPhtIdx(long GHR, long ABB) {
 */
 }
 
-int getPhtIdxNf(long GHR, long ABB) {
+int getPhtIdxNf() {
     // Get PhtIdx without Fold-XOR
     int masked;
     masked = GHR & ABB; // 1. Mask GHR with ABB.
@@ -213,24 +213,24 @@ int getPhtIdxNf(long GHR, long ABB) {
     return masked;
 }
 
-int getPhtIdx64(long GHR, long ABB) {
+int getPhtIdx64() {
     int masked, shifted;
     masked = GHR & ABB; // 1. Mask GHR with ABB.
     masked = masked & 0xFFFF; // 2. Get 11 LSB on masked
 
     shifted = ((GHR & ABB) >> 16) & 0xFFFF; // 3. Get bits 11-21.
-    masked = masked | shifted; // 4. XOR them.
+    masked = masked ^ shifted; // 4. XOR them.
 
     shifted = ((GHR & ABB) >> 32) & 0xFFFF; // 5. Get next 11 bits
-    masked = masked | shifted; // 6. XOR them.
+    masked = masked ^ shifted; // 6. XOR them.
 
     shifted = ((GHR & ABB) >> 48) & 0xFFFF; // 5. Get next 11 bits
-    masked = masked | shifted; // 8. XOR them.
+    masked = masked ^ shifted; // 8. XOR them.
 
     return masked;
 }
 
-int getPhtIdx64Nf(long GHR, long ABB) {
+int getPhtIdx64Nf() {
     int masked;
     masked = GHR & ABB; // 1. Mask GHR with ABB.
     masked = masked & 0xFFFF; // 2. Get 11 LSB on masked
@@ -373,13 +373,13 @@ void processor_t::clock() {
             //bit2_counter += 1;
             //if (bit2_counter > 3) bit2_counter = 3;
             Btb[idx(base,index)].bht = (Btb[idx(base,index)].bht < BTB_MAX_COUNT) ? Btb[idx(base,index)].bht + 1 : BTB_MAX_COUNT;
-            update_phts(getPhtIdx(GHR, ABB), getPhtIdxNf(GHR, ABB), getPhtIdx64(GHR, ABB), getPhtIdx64Nf(GHR, ABB), true);
+            update_phts(getPhtIdx(), getPhtIdxNf(), getPhtIdx64(), getPhtIdx64Nf(), true);
         } else {
             // Not taken
             //bit2_counter -= 1;
             //if (bit2_counter < 0) bit2_counter = 0;
             Btb[idx(base,index)].bht = (Btb[idx(base,index)].bht <= 0) ? 0 : Btb[idx(base,index)].bht - 1;
-            update_phts(getPhtIdx(GHR, ABB), getPhtIdxNf(GHR, ABB), getPhtIdx64(GHR, ABB), getPhtIdx64Nf(GHR, ABB), false);
+            update_phts(getPhtIdx(), getPhtIdxNf(), getPhtIdx64(), getPhtIdx64Nf(), false);
         }
 /*
         if (Btb[idx(base,index)].address + Btb[idx(base,index)].opcode_size == new_instruction.opcode_address) {
@@ -552,7 +552,7 @@ void processor_t::clock() {
         if (branchRow && branchRow->valid) { // We have valid information about it in our BTB
             BtbHit++;
             // Use ABB with 2k entries:
-            phtIndex = getPhtIdx(GHR, ABB);
+            phtIndex = getPhtIdx();
             if (predictionAbb(PHT_abb[phtIndex]) == NOT_TAKEN) {
                 predicted_pc_abb = new_instruction.opcode_address + new_instruction.opcode_size;
                 predicted_abb = true;
@@ -564,7 +564,7 @@ void processor_t::clock() {
             }
 
             // Use ABB with 2k entries without fold-xor:
-            phtIndex = getPhtIdxNf(GHR, ABB);
+            phtIndex = getPhtIdxNf();
             if (predictionAbb(PHT_abb_nf[phtIndex]) == NOT_TAKEN) {
                 predicted_pc_abb_nf = new_instruction.opcode_address + new_instruction.opcode_size;
                 predicted_abb_nf = true;
@@ -576,7 +576,7 @@ void processor_t::clock() {
             }
 
             // Use ABB with 64k entries:
-            phtIndex = getPhtIdx64(GHR, ABB);
+            phtIndex = getPhtIdx64();
             if (predictionAbb(PHT_abb_64[phtIndex]) == NOT_TAKEN) {
                 predicted_pc_abb_64 = new_instruction.opcode_address + new_instruction.opcode_size;
                 predicted_abb_64 = true;
@@ -588,7 +588,7 @@ void processor_t::clock() {
             }
 
             // Use ABB with 64k entries without fold-xor:
-            phtIndex = getPhtIdx64Nf(GHR, ABB);
+            phtIndex = getPhtIdx64Nf();
             if (predictionAbb(PHT_abb_64_nf[phtIndex]) == NOT_TAKEN) {
                 predicted_pc_abb_64_nf = new_instruction.opcode_address + new_instruction.opcode_size;
                 predicted_abb_64_nf = true;
