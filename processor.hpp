@@ -134,6 +134,12 @@ struct l1_row {
     bool valid;
     bool dirty;
     int8_t lru;
+    int wasPrefetched; // Era prefetch?
+    int prefetchUseful; // Usei alguma vez o valor feito prefetch?
+    int prefetchedInTime; // Chegou na hora? Tive que esperar? Quantos ciclos esperei?
+                          // Pra calcular quantos ciclos esperei: Se Ciclo atual > ciclo que fica pronto o prefetch --> esperei = ciclo que fica pronto - ciclo atual
+                          // Ciclo que fica pronto o prefetch é um dado da minha Stride Table
+    // TODO: Inicializar os valores de prefetch.
 };
 
 typedef struct l1_row l1_row;
@@ -141,7 +147,6 @@ typedef struct l1_row l1_row;
 int idx(int base, int deslocamento);
 void copy_row(row *dst, row src);
 void insert_row(row *btb, row newRow);
-
 
 /*
 Informações úteis da instrução
@@ -155,6 +160,41 @@ Toda vez que tiver que remover uma linha modificada (independente se tiver na L1
 o Write-Back vai pra Memória Principal, então latência da RAM (RAM_ACCESS_TIME = 200).
 
 Isso garante que nunca uma linha da L2 vai tar modificada!
+*/
+
+/*
+Estatísticas:
+- Nº ciclos do simulador;
+- Caches hits/misses L1 e L2;
+- Predições feitas e acertadas;
+*/
+
+/*
+Stride Table:
++-----+--------------+--------+--------+-----+
+| Tag | Last Address | Stride | Status | LRU |
++-----+--------------+--------+--------+-----+
+
+Tag --> PC. Como é completamente associativa, precisa o PC inteiro.
+Last Address --> O último PC que olhei.
+Stride --> Distância entre o Address atual pedido e o Last Address. Quando o Status for training e Stride tiver undefined, eu defino ele como Address Atual - Last Address.
+           Se Status for Training e Stride estiver definido e eu estiver acessando essa linha, compara Last Address com Address atual. Se for o mesmo, muda Status pra Active.
+Status --> Active, Training ou Invalid.
+
+Infos:
+  Tamanho --> 16;
+  Associatividade --> Full Associative;
+  Distance --> 4;
+  Degree --> 1;
+  LRU --> 4 bits (vai até o tamanho);
+  Localização --> Entre L2 e RAM (Só analiza se deu Miss na L2, faz pedidos pra RAM e insere dentro da L2);
+  Alocação --> Pre Allocate (cria entrada na cache antes de ter o dado de verdade, tá como Valido mas o Ciclo atual não atingiu ainda o Ciclo que chega o dado).
+               Se eu pedir uma linha cujo dado ainda não chegou (ciclo atual < ciclo que chega o dado), atualiza o ciclo atual pro ciclo que chega o dado.
+  Possíveis Estados --> Invalid, Training, Active
+    Invalid --> Linha inválida (duh);
+    Training --> Aprendendo o padrão. Se a coluna Stride for INVALID, no próximo Hit eu atualizo Stride.
+                 Se Stride for Valid, eu vou pro estado ativo (não faço predição nesse ciclo ainda!);
+    Active --> 
 */
 
 #endif

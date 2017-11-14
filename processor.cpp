@@ -371,6 +371,9 @@ void processor_t::clock() {
 
 // =====================================================================
 void processor_t::statistics() {
+    unsigned int total_l1 = L1_Hit + L1_Miss;
+    double percentage_l1 = (double(100.0 * double(L1_Hit))) / double(total_l1);
+    double percentage_l2 = ((double) (100 * double(L2_Hit))) / (L2_Hit + L2_Miss);
 	ORCS_PRINTF("######################################################\n");
 	ORCS_PRINTF("processor_t\n");
     ORCS_PRINTF("Branch Hits: %d\n", Hit);
@@ -379,7 +382,9 @@ void processor_t::statistics() {
     ORCS_PRINTF("BTB Misses: %d\n", BtbMiss);
     ORCS_PRINTF("L1 Hits: %d\n", L1_Hit);
     ORCS_PRINTF("L1 Misses: %d\n", L1_Miss);
+    ORCS_PRINTF("L1 Percentage: %lf\n", percentage_l1);
     ORCS_PRINTF("L2 Hits: %d\n", L2_Hit);
     ORCS_PRINTF("L2 Misses: %d\n", L2_Miss);
+    ORCS_PRINTF("L2 Percentage: %lf\n", percentage_l2);
     ORCS_PRINTF("Mem Cycles: %d\n", Mem_Cycles);
 };

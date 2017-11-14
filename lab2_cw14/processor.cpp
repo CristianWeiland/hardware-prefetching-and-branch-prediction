@@ -1,28 +1,15 @@
 #include "simulator.hpp"
 
-//row Btb[SETS / WAYS][WAYS];
 row *Btb;
 long ARF[ARF_ROWS]; // Afector Register File
 long ABB; // Affector Branch Bitmap
 long GHR; // Global History Register
-// int PHT_2bit[PHT_SIZE];
 int PHT_abb[PHT_SIZE];
 int PHT_abb_nf[PHT_SIZE];
 int PHT_abb_64[PHT_SIZE_64];
 int PHT_abb_64_nf[PHT_SIZE_64];
 
 int bit2_counter;
-
-/*
-Done:
-- GHR;
-- Function to index PHT from GHR;
-- Get values in ARF;
-- Actually set ABB;
-- Update PHT;
-- Create predictions with PHT;
-TODO: Known bug: If no ABB try to predict we will not count penalties!
-*/
 
 unsigned int Hit, Miss, BtbHit, BtbMiss, TotalPenalty;
 unsigned int TotalPenaltyNf, TotalPenalty64, TotalPenalty64Nf;
@@ -128,26 +115,6 @@ void insert_row(row newRow) {
         --Btb[idx(base,i)].lru;
     }
 }
-/*
-int prediction1(row *branchRow, uint64_t pc) {
-    // 1 bit history
-    if (Predictor_type == ONE_BIT) {
-        if (branchRow->bht == 0) {
-            return NOT_TAKEN;
-        } else if (branchRow->bht == 1) {
-            return TAKEN;
-        }
-        return -1;
-    }
-
-    if (Predictor_type == GSHARE) {
-        // GShare faz xor do GHR com PC pra determinar entrada da PHT.
-        //return predicao_pht(PHT[])
-    }
-
-    return -1;
-}
-*/
 
 int predictionAbb(int data) {
     // Recebe como parametro uma linha de pht, retorna TAKEN ou NAO_TAKEN.
@@ -175,19 +142,19 @@ int getPhtIdx(long GHR, long ABB) {
     masked = masked & 0x7FF; // 2. Get 11 LSB on masked
 
     shifted = ((GHR & ABB) >> 11) & 0x7FF; // 3. Get bits 11-21.
-    masked = masked | shifted; // 4. XOR them.
+    masked = masked ^ shifted; // 4. XOR them.
 
     shifted = ((GHR & ABB) >> 22) & 0x7FF; // 5. Get next 11 bits
-    masked = masked | shifted; // 6. XOR them.
+    masked = masked ^ shifted; // 6. XOR them.
 
     shifted = ((GHR & ABB) >> 33) & 0x7FF; // 5. Get next 11 bits
-    masked = masked | shifted; // 8. XOR them.
+    masked = masked ^ shifted; // 8. XOR them.
 
     shifted = ((GHR & ABB) >> 44) & 0x7FF; // 5. Get next 11 bits
-    masked = masked | shifted; // 8. XOR them.
+    masked = masked ^ shifted; // 8. XOR them.
 
     shifted = ((GHR & ABB) >> 55) & 0x7FF; // 5. Get next 11 bits
-    masked = masked | shifted; // 8. XOR them.
+    masked = masked ^ shifted; // 8. XOR them.
 
     return masked;
 /* Execution Example (with 8 bits, folding 4 times 2 bits):
@@ -219,13 +186,13 @@ int getPhtIdx64(long GHR, long ABB) {
     masked = masked & 0xFFFF; // 2. Get 11 LSB on masked
 
     shifted = ((GHR & ABB) >> 16) & 0xFFFF; // 3. Get bits 11-21.
-    masked = masked | shifted; // 4. XOR them.
+    masked = masked ^ shifted; // 4. XOR them.
 
     shifted = ((GHR & ABB) >> 32) & 0xFFFF; // 5. Get next 11 bits
-    masked = masked | shifted; // 6. XOR them.
+    masked = masked ^ shifted; // 6. XOR them.
 
     shifted = ((GHR & ABB) >> 48) & 0xFFFF; // 5. Get next 11 bits
-    masked = masked | shifted; // 8. XOR them.
+    masked = masked ^ shifted; // 8. XOR them.
 
     return masked;
 }
@@ -305,8 +272,9 @@ void processor_t::clock() {
     static bool predicted_abb_nf = false, predicted_abb_64 = false, predicted_abb_64_nf = false;
     static uint64_t previous_pc = 0; // BTB
     static int previous_instr_size;
-    static uint64_t predicted_pc_abb = 0, predicted_pc_abb_nf = 0, predicted_pc_2bit = 0;
-    static uint64_t predicted_pc_abb_64 = 0, predicted_pc_abb_64_nf = 0;
+    // In case we want to know the predicted pc...
+    // static uint64_t predicted_pc_abb = 0, predicted_pc_abb_nf = 0, predicted_pc_2bit = 0;
+    // static uint64_t predicted_pc_abb_64 = 0, predicted_pc_abb_64_nf = 0;
     static int abb_prediction = -1, abb_nf_prediction = -1, bit2_prediction = -1;
     static int abb_64_prediction = -1, abb_64_nf_prediction = -1;
 
@@ -316,11 +284,6 @@ void processor_t::clock() {
         /// If EOF
         orcs_engine.simulator_alive = false;
         return;
-    }
-
-    // TODO: Remover isso...
-    if (predicted_pc_abb && predicted_pc_abb_nf && predicted_pc_2bit && predicted_pc_abb_64 && predicted_pc_abb_64_nf) {
-        predicted_pc_2bit = predicted_pc_2bit;
     }
 
     /* BEGIN ARF */
@@ -530,12 +493,13 @@ void processor_t::clock() {
         predicted_abb_64 = false;
         predicted_abb_64_nf = false;
         predicted_2bit = false;
-
+        /*
         predicted_pc_abb = 0;
         predicted_pc_abb_nf = 0;
         predicted_pc_abb_64 = 0;
         predicted_pc_abb_64_nf = 0;
         predicted_pc_2bit = 0;
+        */
     }
 
     // Start to gather information about this instruction to use in the next clock.
@@ -554,11 +518,11 @@ void processor_t::clock() {
             // Use ABB with 2k entries:
             phtIndex = getPhtIdx(GHR, ABB);
             if (predictionAbb(PHT_abb[phtIndex]) == NOT_TAKEN) {
-                predicted_pc_abb = new_instruction.opcode_address + new_instruction.opcode_size;
+                // predicted_pc_abb = new_instruction.opcode_address + new_instruction.opcode_size;
                 predicted_abb = true;
                 abb_prediction = TAKEN;
             } else if (predictionAbb(PHT_abb[phtIndex]) == TAKEN) {
-                predicted_pc_abb = branchRow->target_address;
+                // predicted_pc_abb = branchRow->target_address;
                 predicted_abb = true;
                 abb_prediction = NOT_TAKEN;
             }
@@ -566,11 +530,11 @@ void processor_t::clock() {
             // Use ABB with 2k entries without fold-xor:
             phtIndex = getPhtIdxNf(GHR, ABB);
             if (predictionAbb(PHT_abb_nf[phtIndex]) == NOT_TAKEN) {
-                predicted_pc_abb_nf = new_instruction.opcode_address + new_instruction.opcode_size;
+                // predicted_pc_abb_nf = new_instruction.opcode_address + new_instruction.opcode_size;
                 predicted_abb_nf = true;
                 abb_nf_prediction = TAKEN;
             } else if (predictionAbb(PHT_abb_nf[phtIndex]) == TAKEN) {
-                predicted_pc_abb_nf = branchRow->target_address;
+                // predicted_pc_abb_nf = branchRow->target_address;
                 predicted_abb_nf = true;
                 abb_nf_prediction = NOT_TAKEN;
             }
@@ -578,11 +542,11 @@ void processor_t::clock() {
             // Use ABB with 64k entries:
             phtIndex = getPhtIdx64(GHR, ABB);
             if (predictionAbb(PHT_abb_64[phtIndex]) == NOT_TAKEN) {
-                predicted_pc_abb_64 = new_instruction.opcode_address + new_instruction.opcode_size;
+                // predicted_pc_abb_64 = new_instruction.opcode_address + new_instruction.opcode_size;
                 predicted_abb_64 = true;
                 abb_64_prediction = TAKEN;
             } else if (predictionAbb(PHT_abb_64[phtIndex]) == TAKEN) {
-                predicted_pc_abb_64 = branchRow->target_address;
+                // predicted_pc_abb_64 = branchRow->target_address;
                 predicted_abb_64 = true;
                 abb_64_prediction = NOT_TAKEN;
             }
@@ -590,11 +554,11 @@ void processor_t::clock() {
             // Use ABB with 64k entries without fold-xor:
             phtIndex = getPhtIdx64Nf(GHR, ABB);
             if (predictionAbb(PHT_abb_64_nf[phtIndex]) == NOT_TAKEN) {
-                predicted_pc_abb_64_nf = new_instruction.opcode_address + new_instruction.opcode_size;
+                // predicted_pc_abb_64_nf = new_instruction.opcode_address + new_instruction.opcode_size;
                 predicted_abb_64_nf = true;
                 abb_64_nf_prediction = TAKEN;
             } else if (predictionAbb(PHT_abb_64_nf[phtIndex]) == TAKEN) {
-                predicted_pc_abb_64_nf = branchRow->target_address;
+                // predicted_pc_abb_64_nf = branchRow->target_address;
                 predicted_abb_64_nf = true;
                 abb_64_nf_prediction = NOT_TAKEN;
             }
@@ -611,11 +575,11 @@ void processor_t::clock() {
 */
             // Use 2 bit
             if (prediction_2bit(branchRow->bht) == NOT_TAKEN) { // Last time, branch was not taken.
-                predicted_pc_2bit = new_instruction.opcode_address + new_instruction.opcode_size;
+                // predicted_pc_2bit = new_instruction.opcode_address + new_instruction.opcode_size;
                 predicted_2bit = true;
                 bit2_prediction = NOT_TAKEN;
             } else if(prediction_2bit(branchRow->bht) == TAKEN) { // Last time, branch was taken.
-                predicted_pc_2bit = branchRow->target_address;
+                // predicted_pc_2bit = branchRow->target_address;
                 predicted_2bit = true;
                 bit2_prediction = TAKEN;
             }
@@ -671,12 +635,4 @@ void processor_t::statistics() {
     ORCS_PRINTF("Total Penalty (2k nf): %d\n", TotalPenaltyNf);
     ORCS_PRINTF("Total Penalty (64k): %d\n", TotalPenalty64);
     ORCS_PRINTF("Total Penalty (64k nf): %d\n", TotalPenalty64Nf);
-
-/*
-Hit + Miss - 100
-Hit - x
-
-100Hit = (Hit+Miss)x
-x = 100 * Hit ( Hit + Miss )
-*/
 };
