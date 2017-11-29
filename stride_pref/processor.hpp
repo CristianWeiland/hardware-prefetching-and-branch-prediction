@@ -127,7 +127,9 @@ RAM: 4GB;
 #define PC_L2_BITS 10
 
 // 0000000000011111111000000
-#define PC_MASK 0xFF
+//#define PC_MASK 0xFF
+#define L1_MASK 0x3FF
+#define L2_MASK 0x7FF
 
 struct l1_row {
     int tag;
@@ -136,10 +138,9 @@ struct l1_row {
     int8_t lru;
     int wasPrefetched; // Era prefetch?
     int prefetchUseful; // Usei alguma vez o valor feito prefetch?
-    int prefetchedInTime; // Chegou na hora? Tive que esperar? Quantos ciclos esperei?
+    unsigned int cycle; // Chegou na hora? Tive que esperar? Quantos ciclos esperei?
                           // Pra calcular quantos ciclos esperei: Se Ciclo atual > ciclo que fica pronto o prefetch --> esperei = ciclo que fica pronto - ciclo atual
                           // Ciclo que fica pronto o prefetch é um dado da minha Stride Table
-    // TODO: Inicializar os valores de prefetch.
 };
 
 typedef struct l1_row l1_row;
@@ -148,15 +149,21 @@ int idx(int base, int deslocamento);
 void copy_row(row *dst, row src);
 void insert_row(row *btb, row newRow);
 
-typedef enum { ACTIVE, TRAINING, INVALID } pf_status;
+typedef enum { ACTIVE, TRAINING, INVALID } PF_STATUS;
 
 struct stride_pf {
-    int tag;
-    int lastAddress;
+    uint64_t tag;
+    uint64_t lastAddress;
     int stride;
     int status;
     int lru;
-}
+};
+
+typedef struct stride_pf stride_pf;
+
+#define STRIDE_DISTANCE 4
+#define STRIDE_PF_ROWS 16
+#define STRIDE_INVALID -1
 
 /*
 Informações úteis da instrução
