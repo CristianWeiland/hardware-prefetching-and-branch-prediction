@@ -165,6 +165,30 @@ typedef struct stride_pf stride_pf;
 #define STRIDE_PF_ROWS 16
 #define STRIDE_INVALID -1
 
+struct dcpt_pf {
+    uint64_t pc;
+    uint64_t lastAddress;
+    uint64_t lastPrefetch;
+    int *deltas;
+    int deltaPointer;
+    int validDeltas;
+    int lru;
+    int status;
+};
+
+typedef struct dcpt_pf dcpt_pf;
+
+#define DCPT_DEGREE 4
+#define DCPT_ROWS 128 // Autores usam 98, mas vai dormir né...
+#define DCPT_N_DELTAS 19 // Quantos Deltas tenho por entrada.
+#define DCPT_MAX_DELTA 4096 // Se o valor do delta for muito alto, não cabe nos bits destinados aos deltas.
+#define DCPT_REQ_BUF 32 // Tamanho do Prefetch Request Buffer
+
+#define USE_STRIDE 0
+#define USE_DCPT 1
+
+#define PREFETCHER USE_DCPT // 0 = stride, 1 = DCPT (Delta Correlation Prediction Table)
+
 /*
 Informações úteis da instrução
 isRead

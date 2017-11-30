@@ -6,6 +6,9 @@ l1_row *L1;
 // Como não temos dados, dá pra usar a mesma linha da l1.
 l1_row *L2;
 stride_pf *Stride_pf;
+dcpt_pf *Dcpt_pf;
+
+uint64_t prefetchReqBuf[DCPT_REQ_BUF];
 
 unsigned int Cycle;
 
@@ -17,6 +20,9 @@ unsigned int SPF_Cycles, SPF_Delayed, UsefulPrefetches;
 // ST_Hit means how many hits in our Stride Table, SPF_Hit means how many times we used a prefetched value.
 // SPF_Cycles means how many cycles we gained by using prefetch. SPF_Delayed is how many times we prefetched
 // a correct value, but not in time.
+unsigned int DCPT_Hit, DCPT_Miss, DCPT_Prefetches, DCPT_Cycles, DCPT_Delayed, DCPT_Useful;
+unsigned int DCPT_Table_Hit, DCPT_Table_Miss;
+
 
 /* Caches */
 inline int l1_id(int base, int deslocamento) {
@@ -24,6 +30,28 @@ inline int l1_id(int base, int deslocamento) {
 }
 inline int l2_id(int base, int deslocamento) {
     return base * L2_WAYS + deslocamento;
+}
+
+inline void zeraReqBuf() {
+    int i;
+    for (i = 0; i < DCPT_REQ_BUF; ++i) {
+        prefetchReqBuf[i] = 0;
+    }
+}
+
+inline int dAdd(int i, int j) {
+    // Soma dois deltas circularmente, sem retornar um valor menor que 0
+    // Nem um valor maior que DCPT_N_DELTAS.
+    int tmp = i+j;
+    if (tmp < 0) return tmp + DCPT_N_DELTAS;
+    if (tmp >= DCPT_N_DELTAS) return tmp - DCPT_N_DELTAS;
+    return tmp;
+    /* Testes (considerando DCPT_N_DELTAS = 32):
+    i = 3, j = 5 --> retorna 8.
+    i = 32, j = 0 --> retorna 0.
+    i = 30, j = 3 --> retorna 1.
+    i = 1, j = -2 --> retorna 31.
+    */
 }
 
 /* BTB Start */
@@ -195,6 +223,7 @@ void processor_t::allocate() {
     int i;
     for (i=0; i<N_ROWS*WAYS; ++i) {
         btb[i].valid = false;
+        btb[i].address = 0;
     }
     /* Alloca Cache L1 */
     L1 = (l1_row*) malloc(sizeof(struct l1_row) * L1_LINES);
@@ -203,6 +232,7 @@ void processor_t::allocate() {
         L1[i].valid = false;
         L1[i].dirty = false;
         L1[i].wasPrefetched = 0;
+        L1[i].lru = 0;
     }
     /* Alloca Cache L2 */
     L2 = (l1_row*) malloc(sizeof(struct l1_row) * L2_LINES);
@@ -211,16 +241,33 @@ void processor_t::allocate() {
         L2[i].valid = false;
         L2[i].dirty = false;
         L2[i].wasPrefetched = 0;
+        L2[i].lru = 0;
     }
 
     /* Stride Prefetcher */
-    Stride_pf = (stride_pf *) malloc(STRIDE_PF_ROWS * sizeof(struct stride_pf));
-    for (i=0; i<STRIDE_PF_ROWS; ++i) {
-        Stride_pf[i].tag = 0;
-        Stride_pf[i].lastAddress= 0;
-        Stride_pf[i].stride = 0;
-        Stride_pf[i].status = INVALID;
-        Stride_pf[i].lru = 0;
+    if (PREFETCHER == USE_STRIDE) {
+        Stride_pf = (stride_pf *) malloc(STRIDE_PF_ROWS * sizeof(struct stride_pf));
+        for (i=0; i<STRIDE_PF_ROWS; ++i) {
+            Stride_pf[i].tag = 0;
+            Stride_pf[i].lastAddress = 0;
+            Stride_pf[i].stride = 0;
+            Stride_pf[i].status = INVALID;
+            Stride_pf[i].lru = 0;
+        }
+    /* DCPT Prefetcher */
+    } else if (PREFETCHER == USE_DCPT) {
+        int j;
+        Dcpt_pf = (dcpt_pf *) malloc(DCPT_ROWS * sizeof(struct dcpt_pf));
+        for (i=0; i<DCPT_ROWS; ++i) {
+            Dcpt_pf[i].pc = 0;
+            Dcpt_pf[i].lastAddress = 0;
+            Dcpt_pf[i].lastPrefetch = 0;
+            Dcpt_pf[i].deltas = (int *) malloc(DCPT_N_DELTAS * sizeof(int));
+            Dcpt_pf[i].deltaPointer = 0;
+            Dcpt_pf[i].lru = 0;
+            Dcpt_pf[i].status = INVALID;
+            for (j = 0; j < DCPT_N_DELTAS; ++j) Dcpt_pf[i].deltas[j] = 0;
+        }
     }
 
     /* Inicializa variáveis globais */
@@ -242,6 +289,15 @@ void processor_t::allocate() {
     SPF_Delayed= 0;
     SPF_Prefetches = 0;
     UsefulPrefetches = 0;
+
+    DCPT_Hit = 0;
+    DCPT_Miss = 0;
+    DCPT_Prefetches = 0;
+    DCPT_Cycles = 0;
+    DCPT_Delayed = 0;
+    DCPT_Useful = 0;
+    DCPT_Table_Hit = 0;
+    DCPT_Table_Miss = 0;
 };
 
 bool in_l1(int address, bool isRead, bool *isPrefetch, unsigned int *cycle) {
@@ -250,6 +306,7 @@ bool in_l1(int address, bool isRead, bool *isPrefetch, unsigned int *cycle) {
 
     int i;
     for (i=0; i<L1_WAYS; ++i) { // Pra cada linha entre as N associativas
+        if (index+i >= L1_LINES) return false;
         if (L1[i+index].tag == tag && L1[i+index].valid) {
             // If its not read, its write (duh). This means this row is dirty.
             *isPrefetch = L1[i+index].wasPrefetched;
@@ -273,6 +330,7 @@ bool in_l2(int address, bool isRead, bool *isPrefetch, unsigned int *cycle) {
 
     int i;
     for (i=0; i<L2_WAYS; ++i) { // Pra cada linha entre as N associativas
+        if (index+i >= L2_LINES) return false;
         if (L2[i+index].tag == tag && L2[i+index].valid) {
             if (L2[i+index].wasPrefetched) {
                 *isPrefetch = true;
@@ -408,6 +466,97 @@ void add_row_cache_l2(int pc, bool isPrefetch, unsigned int cycle) {
     // if (L2[index+invalid].wasPrefetched) puts("Alala");
 }
 
+void operate_dcpt(uint64_t pc, uint64_t address) {
+    /* Começando: hora de achar a entrada na tabela. */
+    int i, idx = -1, maiorLru, invalid = -1;
+    bool found = false;
+    for (i=0; i<DCPT_ROWS; ++i) {
+        if (Dcpt_pf[i].pc == pc) {
+            found = true;
+            idx = i;
+            break;
+        }
+        if (Dcpt_pf[i].status == INVALID) {
+            invalid = i;
+        }
+    }
+
+    // Se não achei, preciso adicionar a entrada lá.
+    if (!found) {
+        DCPT_Table_Miss++;
+        // It was not in our table. We have to put it in someone's place.
+        maiorLru = DCPT_ROWS;
+        for (i=0; i<DCPT_ROWS; ++i) {
+            if (Dcpt_pf[i].lru > maiorLru) {
+                maiorLru = Dcpt_pf[i].lru;
+                idx = i;
+            }
+        }
+        // Se tinha alguém inválido, usa ele. Se não, pega no menor LRU.
+        if (invalid != -1) idx = invalid;
+
+        // Adiciona a coluna nova
+        Dcpt_pf[idx].pc = pc;
+        Dcpt_pf[idx].status = TRAINING; // Tanto faz o estado, só não pode ser INVALID.
+        Dcpt_pf[idx].deltaPointer = 0;
+        Dcpt_pf[idx].validDeltas = 0;
+        Dcpt_pf[idx].lastAddress = address;
+    } else {
+        DCPT_Table_Hit++;
+        // Atualiza delta (só se não for na primeira rodada).
+        int delta = Dcpt_pf[idx].lastAddress - address;
+        if (delta < 0) delta = -delta; // Get absolute value. TODO: Maybe we should not do this?
+        if (delta != 0) {
+            int pos = Dcpt_pf[idx].deltaPointer;
+            if (pos >= DCPT_N_DELTAS) pos = 0; // Make it circular.
+            Dcpt_pf[idx].deltas[pos] = delta;
+        }
+        if (Dcpt_pf[idx].validDeltas < DCPT_N_DELTAS-1) Dcpt_pf[idx].validDeltas++;
+        // Delta atualizado.
+    }
+
+    // Atualiza LRUs
+    for (i=0; i<DCPT_ROWS; ++i) Dcpt_pf[i].lru++;
+    Dcpt_pf[idx].lru = 0;
+
+    if (Dcpt_pf[idx].validDeltas >= 2) {
+        // Tenta fazer prefetch?
+        dcpt_pf row = Dcpt_pf[idx];
+        int recentDelta1 = row.deltas[row.deltaPointer];
+        int recentDelta2 = row.deltas[dAdd(row.deltaPointer, -1)];
+        int i;
+        /* O que estou buscando: Suponha que meu buffer tá assim:
+        1, 9, 2, 3, 5, 1, 9.
+        Significa que 1, 9 (os mais da direita) são recentDelta2 e recentDelta1 (respectivamente).
+        Vou olhar pra trás até tentar achar um outro par 1, 9. */
+        for (i = 2; i < row.validDeltas-1; ++i) { // Valid deltas -1 porque tenho que dar match em dois.
+            // Vai olhando pra trás e tenta achar recentDelta2 - recentDelta1
+            /* After updating the circular buffer, the deltas are traversed in reverse order,
+               looking for a match to the two most recently inserted deltas. */
+            if (row.deltas[dAdd(row.deltaPointer, -i)] == recentDelta1 &&
+                row.deltas[dAdd(row.deltaPointer, -i-1)] == recentDelta2) {
+                // Beleza. Dei o match que eu queria. Agora tem que fazer prefetch dos próximos caras.
+                // Addr eh o endereco que eu vou fazer prefetch. Eu sempre vou somando os deltas.
+                uint64_t addr = row.lastAddress;
+                int j, idx = dAdd(row.deltaPointer, -i + 1); // Delta logo após o par (1, 9) --> Delta 2.
+                for (j = 0; j < DCPT_DEGREE; ++j) {
+                    addr += row.deltas[dAdd(idx, j)];
+                    add_row_cache_l2(addr, true, Cycle + RAM_ACCESS_TIME);
+                    // Se eu passei por recentDelta2 e recentDelta1 e não
+                    // fiz o prefetch de todos os degrees, força a parada.
+                    if (j == row.deltaPointer) break; // OBS: Eu ainda faço prefetch do recentDelta1!!!
+                }
+                break;
+            // Se eh 0 eh porque deu ruim, entao aborta e tenta na proxima.
+            } else if (row.deltas[dAdd(row.deltaPointer, -i)] == 0 ||
+                       row.deltas[dAdd(row.deltaPointer, -i-1)] == 0) {
+                break;
+            }
+        }
+    }
+    // Se validDeltas for 0 ou 1, eu não tenho dados o suficiente pra trabalhar.
+}
+
 void operate_caches(bool isMemOp, uint64_t address, bool isRead, uint64_t pc) {
     if (!isMemOp) return;
 
@@ -438,13 +587,17 @@ void operate_caches(bool isMemOp, uint64_t address, bool isRead, uint64_t pc) {
             else Cycle += L2_ACCESS_TIME + L1_ACCESS_TIME;
         } else {
             // Operate prefetcher
-            bool prefetched = false;
-            uint64_t prefetchedAddress;
-            operate_prefetcher(pc, address, &prefetched, &prefetchedAddress);
-            // Se o prefetch quer inserir algo mas ja ta na cache l2, finge que nada aconteceu.
-            if (prefetched && !in_l2(prefetchedAddress, isRead, &prefetched, &cycleReady)) {
-                SPF_Prefetches++;
-                add_row_cache_l2(prefetchedAddress, true, Cycle + RAM_ACCESS_TIME);
+            if (PREFETCHER == USE_STRIDE) {
+                bool prefetched = false;
+                uint64_t prefetchedAddress;
+                operate_prefetcher(pc, address, &prefetched, &prefetchedAddress);
+                // Se o prefetch quer inserir algo mas ja ta na cache l2, finge que nada aconteceu.
+                if (prefetched && !in_l2(prefetchedAddress, isRead, &prefetched, &cycleReady)) {
+                    SPF_Prefetches++;
+                    add_row_cache_l2(prefetchedAddress, true, Cycle + RAM_ACCESS_TIME);
+                }
+            } else if (PREFETCHER == USE_DCPT) {
+                operate_dcpt(pc, address);
             }
 
             ++L2_Miss;
